@@ -409,6 +409,74 @@ class Flask(App):
                 # 用 add_ctx 包装基类方法：调用 super() 时自动注入 ctx 参数（兼容新调用方式）
                 setattr(Flask, method.__name__, add_ctx(base_method))
 
+    def __init__(
+        self,
+        import_name: str,  # 应用的导入名（通常为 __name__），用于定位资源
+        static_url_path: str | None = None,  # Web 上访问静态文件的 URL 前缀，如 '/static'；若为 None，则默认使用 static_folder 的名字
+        static_folder: str | os.PathLike[str] | None = "static",  # 静态文件所在目录（相对于 root_path），设为 None 则禁用静态文件服务
+        static_host: str | None = None,  # 静态路由绑定的主机名（仅在 host_matching=True 时有效）
+        host_matching: bool = False,  # 是否启用基于 Host 头的路由匹配（需配合 SERVER_NAME 使用）
+        subdomain_matching: bool = False,  # 是否启用子域名匹配（需手动开启，默认不启用）
+        template_folder: str | os.PathLike[str] | None = "templates",  # 模板文件目录（相对于 root_path）
+        instance_path: str | None = None,  # 实例文件夹路径（用于存放运行时配置、数据库等），默认为包旁的 'instance' 目录
+        instance_relative_config: bool = False,  # 若为 True，相对路径的配置文件将相对于 instance_path 加载
+        root_path: str | None = None,  # 应用根目录（通常自动推断，仅在特殊包结构如 namespace package 中需手动指定）
+    ):
+        # 调用父类（sansio.app.App）的初始化方法，完成核心属性设置（如 name, root_path, url_map 等）
+        super().__init__(
+            import_name=import_name,
+            static_url_path=static_url_path,
+            static_folder=static_folder,
+            static_host=static_host,
+            host_matching=host_matching,
+            subdomain_matching=subdomain_matching,
+            template_folder=template_folder,
+            instance_path=instance_path,
+            instance_relative_config=instance_relative_config,
+            root_path=root_path,
+        )
 
+        # 创建 Click 命令组（AppGroup），用于注册自定义 CLI 命令
+        # 用户可通过 @app.cli.command() 添加命令，这些命令会出现在 `flask --help` 中
+        #: The Click command group for registering CLI commands for this
+        #: object. The commands are available from the ``flask`` command
+        #: once the application has been discovered and blueprints have
+        #: been registered.
+        self.cli = cli.AppGroup()
+
+        # 设置 CLI 命令组的名称为应用名（self.name，即 import_name）
+        # 这样当把此 app 的命令集成到其他 CLI 工具时，能正确命名
+        self.cli.name = self.name
+
+        # 如果配置了 static_folder（即启用了静态文件服务），则自动注册静态文件路由
+        # 注意：这里不检查 static_folder 是否真实存在！原因：
+        #   1. 开发过程中目录可能动态创建
+        #   2. 某些平台（如 Google App Engine）将静态文件托管在别处
+        if self.has_static_folder:
+            # 校验参数一致性：当启用 host_matching 时，必须提供 static_host；否则不能提供
+            assert bool(static_host) == host_matching, (
+                "Invalid static_host/host_matching combination"
+            )
+            # 使用弱引用（weakref）避免 Flask 实例与视图函数之间形成循环引用
+            # （否则可能导致内存泄漏，见 Flask Issue #3761）
+            self_ref = weakref.ref(self)
+            # 注册静态文件路由规则：
+            #   - URL: /<static_url_path>/<path:filename> （如 /static/css/style.css）
+            #   - endpoint: 固定为 "static"（供 url_for('static', filename='...') 使用）
+            #   - host: 可选主机名（用于 host_matching）
+            #   - view_func: 匿名函数，调用 self.send_static_file(filename=...)
+            self.add_url_rule(
+                f"{self.static_url_path}/<path:filename>",  # <path:filename> 支持多级路径
+                endpoint="static",
+                host=static_host,
+                # 使用 self_ref() 获取实例（若实例已被销毁则返回 None，但此时请求已无效）
+                # type: ignore 是因为 mypy 无法确定 self_ref() 的返回类型
+                # noqa: B950 忽略行长度警告
+                view_func=lambda **kw: self_ref().send_static_file(**kw),  # type: ignore # noqa: B950
+            )
+
+
+
+            
                 
 ```
