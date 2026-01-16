@@ -412,7 +412,8 @@ class Flask(App):
     def __init__(
         self,
         import_name: str,  # 应用的导入名（通常为 __name__），用于定位资源
-        static_url_path: str | None = None,  # Web 上访问静态文件的 URL 前缀，如 '/static'；若为 None，则默认使用 static_folder 的名字
+        static_url_path: str | None = None,  # Web 上访问静态文件的 URL 前缀。  
+                                      # “static_url_path”：参数名称，   “: str | None”：类型提示：接受字符或None。      “= None”	：默认值为 None
         static_folder: str | os.PathLike[str] | None = "static",  # 静态文件所在目录（相对于 root_path），设为 None 则禁用静态文件服务
         static_host: str | None = None,  # 静态路由绑定的主机名（仅在 host_matching=True 时有效）
         host_matching: bool = False,  # 是否启用基于 Host 头的路由匹配（需配合 SERVER_NAME 使用）
